@@ -1786,7 +1786,7 @@
             "title": "Créer un nouveau Tonie/Tag personnalisé",
             "track": "Piste"
         },
-        "addToniesCustomJsonEntry": "WIP: Ajouter un modèle",
+        "addToniesCustomJsonEntry": "Gérer les modèles personnalisés",
         "alternativeSource": "Cette Tonie {{originalTonie}} est assignée à un contenu {{assignedContent}} !",
         "alternativeSourceUnknown": "Cette Tonie {{originalTonie}} est assignée à un contenu alternatif  !",
         "cancel": "Annuler",

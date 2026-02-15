@@ -1786,7 +1786,7 @@
             "title": "Crear nuevo Tonie/Etiqueta personalizado",
             "track": "Pista"
         },
-        "addToniesCustomJsonEntry": "WIP: Agregar modelo",
+        "addToniesCustomJsonEntry": "Gestionar modelos personalizados",
         "alternativeSource": "Este Tonie {{originalTonie}} tiene asignado el contenido {{assignedContent}}!",
         "alternativeSourceUnknown": "¡Este Tonie {{originalTonie}} tiene asignado contenido alternativo!",
         "cancel": "Cancelar",

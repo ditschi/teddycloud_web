@@ -1,16 +1,17 @@
-// to be refactored
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal, Form, Input, Button, Col, Row, Tooltip, Alert } from "antd";
+import { Button, Col, Form, Input, Modal, Row, Space, Tooltip, Typography } from "antd";
+import type { UploadFile } from "antd";
 import { InfoCircleOutlined } from "@ant-design/icons";
 
 import { TonieCardProps } from "../../types/tonieTypes";
-
 import { TeddyCloudApi } from "../../api";
 import { defaultAPIConfig } from "../../config/defaultApiConfig";
-import CodeSnippet from "../common/elements/CodeSnippet";
 import { useTeddyCloud } from "../../contexts/TeddyCloudContext";
+import { NotificationTypeEnum } from "../../types/teddyCloudNotificationTypes";
+import { FileBrowser } from "./filebrowser/FileBrowser";
+import { SelectFileFileBrowser } from "./filebrowser/SelectFileFileBrowser";
+import UploadFilesModal from "./filebrowser/modals/UploadFilesModal";
 
 const api = new TeddyCloudApi(defaultAPIConfig());
 
@@ -24,6 +25,120 @@ interface ToniesCustomJsonEditorProps {
     hash?: string;
 }
 
+type AudioPair = { audio_id: string; hash: string };
+type TrackRow = { track: string };
+
+type CustomEntry = {
+    no?: string;
+    model: string;
+    audio_id?: string[];
+    hash?: string[];
+    title?: string;
+    series: string;
+    episodes?: string;
+    tracks?: string[];
+    release?: string;
+    language?: string;
+    category?: string;
+    pic?: string;
+};
+
+type FormValues = {
+    no?: string;
+    model: string;
+    title?: string;
+    series: string;
+    episodes?: string;
+    release?: string;
+    language?: string;
+    category?: string;
+    pic?: string;
+    audioPairs: AudioPair[];
+    tracks: TrackRow[];
+};
+
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+
+const normalizeDirPath = (value: string) => value.replace(/^\/+/, "").replace(/\/+$/, "");
+
+const deriveCustomImgDirectory = (pic?: string): string => {
+    if (!pic || !pic.startsWith("/custom_img/")) return "";
+    const normalized = pic.slice("/custom_img/".length);
+    const segments = normalized.split("/").filter(Boolean);
+    if (segments.length <= 1) return "";
+    return segments.slice(0, -1).join("/");
+};
+
+const toCustomImgWebPath = (path: string, fileName: string) => {
+    const normalizedPath = normalizeDirPath(path);
+    return normalizedPath ? `/custom_img/${normalizedPath}/${fileName}` : `/custom_img/${fileName}`;
+};
+
+const cloneEntry = (entry: CustomEntry): CustomEntry => JSON.parse(JSON.stringify(entry));
+
+const toFormValues = (entry: CustomEntry): FormValues => ({
+    no: entry.no ?? "",
+    model: entry.model ?? "",
+    title: entry.title ?? "",
+    series: entry.series ?? "",
+    episodes: entry.episodes ?? "",
+    release: entry.release ?? "",
+    language: entry.language ?? "",
+    category: entry.category ?? "",
+    pic: entry.pic ?? "",
+    audioPairs:
+        entry.audio_id && entry.hash
+            ? entry.audio_id.map((audio_id, idx) => ({ audio_id: audio_id ?? "", hash: entry.hash?.[idx] ?? "" }))
+            : [{ audio_id: "", hash: "" }],
+    tracks: entry.tracks && entry.tracks.length > 0 ? entry.tracks.map((track) => ({ track })) : [{ track: "" }],
+});
+
+const parseModelId = (model: string): number | null => {
+    const match = /^custom-(\d+)$/i.exec(model.trim());
+    return match ? Number(match[1]) : null;
+};
+
+const buildSuggestedModel = (entries: CustomEntry[]): string => {
+    let maxId = 0;
+    entries.forEach((entry) => {
+        const parsed = parseModelId(entry.model || "");
+        if (parsed !== null && parsed > maxId) maxId = parsed;
+    });
+    return `custom-${maxId + 1}`;
+};
+
+const toEntry = (values: FormValues): CustomEntry => {
+    const pairs = (values.audioPairs || [])
+        .map((pair) => ({
+            audio_id: (pair.audio_id || "").trim(),
+            hash: (pair.hash || "").trim(),
+        }))
+        .filter((pair) => pair.audio_id && pair.hash);
+
+    const tracks = (values.tracks || [])
+        .map((track) => (track.track || "").trim())
+        .filter((track) => track.length > 0);
+
+    const entry: CustomEntry = {
+        no: (values.no || "").trim() || undefined,
+        model: (values.model || "").trim(),
+        audio_id: pairs.length > 0 ? pairs.map((pair) => pair.audio_id) : undefined,
+        hash: pairs.length > 0 ? pairs.map((pair) => pair.hash) : undefined,
+        title: (values.title || "").trim() || undefined,
+        series: (values.series || "").trim(),
+        episodes: (values.episodes || "").trim() || undefined,
+        tracks: tracks.length > 0 ? tracks : undefined,
+        release: (values.release || "").trim() || undefined,
+        language: (values.language || "").trim() || undefined,
+        category: (values.category || "").trim() || undefined,
+        pic: (values.pic || "").trim() || undefined,
+    };
+
+    return entry;
+};
+
+const isImageFile = (name: string) => IMAGE_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
+
 export const ToniesCustomJsonEditor: React.FC<ToniesCustomJsonEditorProps> = ({
     open,
     onClose,
@@ -35,419 +150,636 @@ export const ToniesCustomJsonEditor: React.FC<ToniesCustomJsonEditorProps> = ({
 }) => {
     const { t } = useTranslation();
     const { addNotification } = useTeddyCloud();
-    const [form] = Form.useForm();
+    const [form] = Form.useForm<FormValues>();
 
-    useEffect(() => {
-        if (open) {
-            resetForm();
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    const [customEntries, setCustomEntries] = useState<CustomEntry[]>([]);
+    const [baseEntries, setBaseEntries] = useState<CustomEntry[]>([]);
+    const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+    const [isEditingNewEntry, setIsEditingNewEntry] = useState(true);
+
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [pickerPath, setPickerPath] = useState("");
+    const [pickerSelection, setPickerSelection] = useState<string>("");
+
+    const [uploadOpen, setUploadOpen] = useState(false);
+    const [uploadPath, setUploadPath] = useState("");
+    const [uploadFileList, setUploadFileList] = useState<UploadFile<any>[]>([]);
+    const [, setUploadRebuild] = useState(false);
+
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState("");
+
+    const [imagePathOptions, setImagePathOptions] = useState<string[]>([]);
+
+    const listWithCurrentDraft = async () => {
+        const values = await form.validateFields();
+        const draft = toEntry(values);
+        const next = customEntries.map((entry) => cloneEntry(entry));
+        if (isEditingNewEntry) {
+            next.push(draft);
+            return { next, activeEntry: draft };
         }
-        if (open && tonieCardProps) {
-            // to do prefill form
-            form.setFieldsValue({
-                series: tonieCardProps.tonieInfo.series,
-                episodes: tonieCardProps.tonieInfo.episode,
-                model: tonieCardProps.tonieInfo.model,
-                language: tonieCardProps.tonieInfo.language,
-                pic: tonieCardProps.tonieInfo.picture,
-                tracks: tonieCardProps.tonieInfo.tracks,
-            });
+        if (selectedIndex === null || selectedIndex < 0 || selectedIndex >= next.length) {
+            throw new Error("Invalid selected index");
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, tonieCardProps, form]);
+        next[selectedIndex] = draft;
+        return { next, activeEntry: draft };
+    };
 
-    const handleFinish = async (values: any) => {
-        if (values["tracks"]) {
-            values["tracks"] = values["tracks"]
-                .filter((track: { track: string }) => track.track && track.track.trim())
-                .map((track: { track: string }) => track.track);
+    const validateEntryList = (entries: CustomEntry[]) => {
+        const modelMap = new Map<string, number>();
+        const pairMap = new Map<string, string>();
+
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            const modelKey = entry.model.trim().toLowerCase();
+            if (modelMap.has(modelKey)) {
+                return {
+                    error: t("tonies.addNewCustomTonieModal.modelRequired") + ` (Duplicate: ${entry.model})`,
+                    baseWarning: "",
+                };
+            }
+            modelMap.set(modelKey, i);
+
+            const audioIds = entry.audio_id || [];
+            const hashes = entry.hash || [];
+            for (let j = 0; j < Math.min(audioIds.length, hashes.length); j++) {
+                const pair = `${audioIds[j]}::${hashes[j].toLowerCase()}`;
+                if (pairMap.has(pair)) {
+                    return {
+                        error: `Duplicate audio_id+hash pair detected: ${audioIds[j]}`,
+                        baseWarning: "",
+                    };
+                }
+                pairMap.set(pair, entry.model);
+            }
         }
-        if (values.audio_id) {
-            values.audio_id = values.audio_id.filter(
-                (audio_id: { audio_id: string; hash: string }) =>
-                    audio_id["audio_id"] && audio_id["audio_id"].trim() && audio_id.hash && audio_id.hash.trim()
-            );
 
-            const audio_id = values.audio_id.map((item: { audio_id: string }) => item.audio_id);
-            const hash = values.audio_id.map((item: { hash: string }) => item.hash);
-
-            values = {
-                no: values.no,
-                model: values.model,
-                audio_id: audio_id,
-                hash: hash,
-                title: values.title,
-                series: values.series,
-                episodes: values.episodes,
-                tracks: values.tracks,
-                release: values.release,
-                language: values.language,
-                category: values.category,
-                pic: values.pic,
+        const baseModelSet = new Set(baseEntries.map((entry) => (entry.model || "").trim().toLowerCase()));
+        const baseWarningModels = entries
+            .filter((entry) => baseModelSet.has(entry.model.trim().toLowerCase()))
+            .map((entry) => entry.model);
+        if (baseWarningModels.length > 0) {
+            return {
+                error: "",
+                baseWarning: `Model exists in base tonies.json: ${Array.from(new Set(baseWarningModels)).join(", ")}`,
             };
         }
 
-        // remove that if the API is available
-        setJsonData(values);
-        setJsonViewerModalOpened(true);
+        return { error: "", baseWarning: "" };
+    };
 
-        /*
+    const resetFormForNewEntry = (seedEntries: CustomEntry[]) => {
+        const suggestedModel = buildSuggestedModel(seedEntries);
+        const seedAudio = audioId && hash ? [{ audio_id: String(audioId), hash }] : [{ audio_id: "", hash: "" }];
+
+        form.setFieldsValue({
+            no: "",
+            model: suggestedModel,
+            title: "",
+            series: tonieCardProps?.tonieInfo?.series || "",
+            episodes: tonieCardProps?.tonieInfo?.episode || "",
+            release: "",
+            language: tonieCardProps?.tonieInfo?.language || "",
+            category: "",
+            pic: tonieCardProps?.tonieInfo?.picture || "",
+            audioPairs: seedAudio,
+            tracks: [{ track: "" }],
+        });
+        setSelectedIndex(null);
+        setIsEditingNewEntry(true);
+    };
+
+    const loadJsonData = async () => {
+        setLoading(true);
         try {
-            await api.apiPostTeddyCloudRaw("/api/doSomething", JSON.stringify(values), undefined, undefined, {
-                "Content-Type": "application/json",
-            });
+            const [customResponse, baseResponse] = await Promise.all([
+                api.apiGetTeddyCloudApiRaw("/api/toniesCustomJson"),
+                api.apiGetTeddyCloudApiRaw("/api/toniesJson"),
+            ]);
 
-            // if called from article search, we write back the article number
-            if (values.article && setValue) {
-                // todo call tonies api reload
-                // then set article value
-                setValue(values.article);
-                props.onChange(values.article);
+            const [customData, baseData] = await Promise.all([customResponse.json(), baseResponse.json()]);
+            const normalizedCustom = Array.isArray(customData) ? customData : [];
+            const normalizedBase = Array.isArray(baseData) ? baseData : [];
+            setCustomEntries(normalizedCustom);
+            setBaseEntries(normalizedBase);
+
+            if (normalizedCustom.length > 0) {
+                setSelectedIndex(0);
+                setIsEditingNewEntry(false);
+                form.setFieldsValue(toFormValues(normalizedCustom[0]));
+            } else {
+                resetFormForNewEntry(normalizedCustom);
             }
-
-            resetForm();
-            addNotification(
-                NotificationTypeEnum.Success,
-                t("tonies.addNewCustomTonieModal.successfullyCreated"),
-                t("tonies.addNewCustomTonieModal.successfullyCreatedDetails", { series: values.series, model: values.model }),
-                t("tonies.addToniesCustomJsonEntry")
-            );
-            onClose();
         } catch (error) {
             addNotification(
                 NotificationTypeEnum.Error,
                 t("tonies.addNewCustomTonieModal.failedToCreate"),
-                t("tonies.addNewCustomTonieModal.failedToCreateDetails", { series: values.series, model: values.model }) + error,
+                String(error),
                 t("tonies.addToniesCustomJsonEntry")
             );
+        } finally {
+            setLoading(false);
         }
-        */
     };
 
-    const handleOk = () => {
-        form.submit();
+    const collectImagePaths = async () => {
+        const queue: string[] = [""];
+        const seen = new Set<string>();
+        const discovered: string[] = [];
+
+        while (queue.length > 0) {
+            const current = queue.shift() || "";
+            if (seen.has(current)) continue;
+            seen.add(current);
+
+            try {
+                const response = await api.apiGetTeddyCloudApiRaw(
+                    `/api/fileIndexV2?path=${encodeURIComponent(current)}&special=custom_img`
+                );
+                if (!response.ok) continue;
+                const data = await response.json();
+                const files = Array.isArray(data?.files) ? data.files : [];
+
+                files.forEach((entry: any) => {
+                    if (!entry || entry.name === "..") return;
+                    if (entry.isDir) {
+                        const nextPath = current ? `${current}/${entry.name}` : `${entry.name}`;
+                        queue.push(nextPath);
+                        return;
+                    }
+                    if (isImageFile(entry.name)) {
+                        discovered.push(toCustomImgWebPath(current, entry.name));
+                    }
+                });
+            } catch {
+                // ignore and continue with already discovered entries
+            }
+        }
+
+        setImagePathOptions(Array.from(new Set(discovered)).sort((a, b) => a.localeCompare(b)));
     };
 
-    const handleCancel = () => {
-        resetForm();
-        onClose();
-    };
-    const resetForm = () => {
-        form.resetFields();
-        form.setFieldsValue({
-            audio_id: [{ audio_id: audioId ? audioId : "", hash: hash ? hash : "" }],
-            tracks: [{ track: "" }],
-        });
-    };
+    useEffect(() => {
+        if (!open) return;
+        void loadJsonData();
+        void collectImagePaths();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
 
-    // just for now, can be removed later when API is available
-    const [jsonData, setJsonData] = useState<string>("");
-    const [jsonViewerModalOpened, setJsonViewerModalOpened] = useState(false);
+    const selectedModelLabel = useMemo(() => {
+        if (isEditingNewEntry) return "(neu)";
+        if (selectedIndex === null || selectedIndex < 0 || selectedIndex >= customEntries.length) return "";
+        return customEntries[selectedIndex].model;
+    }, [customEntries, isEditingNewEntry, selectedIndex]);
 
-    const jsonViewerModalFooter = (
-        <Button type="primary" onClick={() => handleJsonViewerModalClose()}>
-            {t("tonies.informationModal.ok")}
-        </Button>
-    );
-
-    const handleJsonViewerModalClose = () => {
-        setJsonViewerModalOpened(false);
-        handleCancel();
+    const handleSelectEntry = (idx: number) => {
+        if (idx < 0 || idx >= customEntries.length) return;
+        setSelectedIndex(idx);
+        setIsEditingNewEntry(false);
+        form.setFieldsValue(toFormValues(customEntries[idx]));
     };
 
-    const jsonViewerModal = (
-        <Modal
-            footer={jsonViewerModalFooter}
-            width={1000}
-            title={"File (you can copy the content to the tonies.custom.json)"}
-            open={jsonViewerModalOpened}
-            onCancel={handleJsonViewerModalClose}
-        >
-            {jsonData ? (
-                <>
-                    <CodeSnippet key="json-readable" language="json" code={JSON.stringify(jsonData, null, 2)} />
-                    <div style={{ margin: "16px 0 8px 0" }}>Minimized json:</div>
-                    <CodeSnippet
-                        key="json-minimized"
-                        language="json"
-                        showLineNumbers={false}
-                        code={JSON.stringify(jsonData, null, 0)}
-                    />
-                </>
-            ) : (
-                "Loading..."
-            )}
-        </Modal>
-    );
-    // end removal json viewer
+    const handleApplyEntry = async () => {
+        try {
+            const values = await form.validateFields();
+            const draft = toEntry(values);
+
+            if (isEditingNewEntry) {
+                const next = [...customEntries, draft];
+                setCustomEntries(next);
+                setSelectedIndex(next.length - 1);
+                setIsEditingNewEntry(false);
+                addNotification(
+                    NotificationTypeEnum.Success,
+                    t("tonies.addNewCustomTonieModal.successfullyCreated"),
+                    t("tonies.addNewCustomTonieModal.successfullyCreatedDetails", {
+                        series: draft.series,
+                        model: draft.model,
+                    }),
+                    t("tonies.addToniesCustomJsonEntry")
+                );
+                return;
+            }
+
+            if (selectedIndex === null) return;
+            const next = customEntries.map((entry) => cloneEntry(entry));
+            next[selectedIndex] = draft;
+            setCustomEntries(next);
+            addNotification(
+                NotificationTypeEnum.Success,
+                t("tonies.addNewCustomTonieModal.successfullyCreated"),
+                t("tonies.addNewCustomTonieModal.successfullyCreatedDetails", {
+                    series: draft.series,
+                    model: draft.model,
+                }),
+                t("tonies.addToniesCustomJsonEntry")
+            );
+        } catch {
+            // form shows errors
+        }
+    };
+
+    const handleDeleteEntry = () => {
+        if (isEditingNewEntry) {
+            resetFormForNewEntry(customEntries);
+            return;
+        }
+        if (selectedIndex === null || selectedIndex < 0 || selectedIndex >= customEntries.length) return;
+        const next = customEntries.filter((_, idx) => idx !== selectedIndex);
+        setCustomEntries(next);
+        if (next.length === 0) {
+            resetFormForNewEntry(next);
+            return;
+        }
+        const newIndex = Math.min(selectedIndex, next.length - 1);
+        handleSelectEntry(newIndex);
+    };
+
+    const saveEntries = async (allowBaseOverride: boolean) => {
+        const { next, activeEntry } = await listWithCurrentDraft();
+        const validation = validateEntryList(next);
+        if (validation.error) {
+            throw new Error(validation.error);
+        }
+
+        if (validation.baseWarning && !allowBaseOverride) {
+            return { blockedByBaseWarning: true, message: validation.baseWarning, model: activeEntry.model };
+        }
+
+        const response = await api.apiPostTeddyCloudRaw(
+            `/api/toniesCustomJsonSet${allowBaseOverride ? "?allowBaseOverride=true" : ""}`,
+            JSON.stringify(next),
+            undefined,
+            undefined,
+            { "Content-Type": "application/json" }
+        );
+
+        const responseText = await response.text();
+        if (!response.ok) {
+            if (response.status === 409 && responseText.includes("BASE_OVERRIDE_WARNING") && !allowBaseOverride) {
+                return { blockedByBaseWarning: true, message: responseText, model: activeEntry.model };
+            }
+            throw new Error(responseText || `HTTP ${response.status}`);
+        }
+
+        setCustomEntries(next);
+        setValue?.(activeEntry.model);
+        if (props?.onChange) props.onChange(activeEntry.model);
+        return { blockedByBaseWarning: false, message: "", model: activeEntry.model };
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const result = await saveEntries(false);
+            if (result.blockedByBaseWarning) {
+                Modal.confirm({
+                    title: "Base-Override bestaetigen",
+                    content: result.message,
+                    okText: "Trotzdem speichern",
+                    cancelText: t("tonies.informationModal.cancel"),
+                    onOk: async () => {
+                        try {
+                            setSaving(true);
+                            await saveEntries(true);
+                            addNotification(
+                                NotificationTypeEnum.Success,
+                                t("tonies.addNewCustomTonieModal.successfullyCreated"),
+                                `Gespeichert (mit Base-Override): ${result.model}`,
+                                t("tonies.addToniesCustomJsonEntry")
+                            );
+                            await loadJsonData();
+                            await collectImagePaths();
+                        } catch (error) {
+                            addNotification(
+                                NotificationTypeEnum.Error,
+                                t("tonies.addNewCustomTonieModal.failedToCreate"),
+                                String(error),
+                                t("tonies.addToniesCustomJsonEntry")
+                            );
+                        } finally {
+                            setSaving(false);
+                        }
+                    },
+                    onCancel: () => setSaving(false),
+                });
+                return;
+            }
+
+            addNotification(
+                NotificationTypeEnum.Success,
+                t("tonies.addNewCustomTonieModal.successfullyCreated"),
+                `tonies.custom.json gespeichert (${customEntries.length} Eintraege)`,
+                t("tonies.addToniesCustomJsonEntry")
+            );
+            await loadJsonData();
+            await collectImagePaths();
+        } catch (error) {
+            addNotification(
+                NotificationTypeEnum.Error,
+                t("tonies.addNewCustomTonieModal.failedToCreate"),
+                String(error),
+                t("tonies.addToniesCustomJsonEntry")
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleOpenPicker = () => {
+        const pic = form.getFieldValue("pic");
+        const initial = deriveCustomImgDirectory(pic);
+        setPickerPath(initial);
+        setPickerSelection(pic || "");
+        setPickerOpen(true);
+    };
+
+    const handleOpenUploader = () => {
+        const pic = form.getFieldValue("pic");
+        const initial = deriveCustomImgDirectory(pic);
+        setUploadPath(initial);
+        setUploadOpen(true);
+    };
+
+    const selectedPic = Form.useWatch("pic", form);
 
     return (
         <>
             <Modal
-                title={t("tonies.addNewCustomTonieModal.title")}
+                title={t("tonies.addToniesCustomJsonEntry")}
                 open={open}
-                onCancel={handleCancel}
-                onOk={handleOk}
-                okText={t("tonies.addNewCustomTonieModal.save")}
-                width={Math.max(Math.min(window.innerWidth * 0.75, 800), 500)}
+                onCancel={onClose}
+                width={Math.max(Math.min(window.innerWidth * 0.92, 1500), 900)}
+                footer={
+                    <Space>
+                        <Button onClick={onClose}>{t("tonies.informationModal.cancel")}</Button>
+                        <Button type="primary" loading={saving || loading} onClick={handleSave}>
+                            {t("tonies.addNewCustomTonieModal.save")}
+                        </Button>
+                    </Space>
+                }
+                destroyOnClose
             >
-                <Alert
-                    type="info"
-                    showIcon={true}
-                    title="Work in progress - be aware!"
-                    description="Currently, only the generated json fragment is displayed when saving the new model. This is not automatically inserted into the tonies.custom.json. You have to copy this into the file yourself."
-                    style={{ marginBottom: 8 }}
-                />
-                <Form form={form} layout="vertical" onFinish={handleFinish}>
-                    <Row gutter={[16, 0]}>
-                        <Col span={24}>
-                            <Row gutter={[16, 0]}>
+                <Row gutter={16}>
+                    <Col span={11}>
+                        <Typography.Title level={5} style={{ marginTop: 0 }}>
+                            Bildverwaltung
+                        </Typography.Title>
+                        <Typography.Paragraph type="secondary">
+                            Upload, Ordnerstruktur, Verschieben und Loeschen fuer `/custom_img`.
+                        </Typography.Paragraph>
+                        <div style={{ border: "1px solid #303030", borderRadius: 8, padding: 8 }}>
+                            <FileBrowser special="custom_img" filetypeFilter={IMAGE_EXTENSIONS} trackUrl={false} />
+                        </div>
+                    </Col>
+                    <Col span={13}>
+                        <Typography.Title level={5} style={{ marginTop: 0 }}>
+                            Modell-Editor {selectedModelLabel ? `- ${selectedModelLabel}` : ""}
+                        </Typography.Title>
+
+                        <Space wrap style={{ marginBottom: 8 }}>
+                            <Button onClick={() => resetFormForNewEntry(customEntries)}>Neues Modell</Button>
+                            <Button onClick={handleApplyEntry}>Eintrag uebernehmen</Button>
+                            <Button danger onClick={handleDeleteEntry}>
+                                Eintrag loeschen
+                            </Button>
+                        </Space>
+
+                        <div style={{ maxHeight: 160, overflowY: "auto", border: "1px solid #303030", borderRadius: 8, padding: 8 }}>
+                            <Space wrap>
+                                {customEntries.map((entry, idx) => (
+                                    <Button
+                                        key={`${entry.model}-${idx}`}
+                                        type={!isEditingNewEntry && selectedIndex === idx ? "primary" : "default"}
+                                        onClick={() => handleSelectEntry(idx)}
+                                    >
+                                        {entry.model}
+                                    </Button>
+                                ))}
+                            </Space>
+                        </div>
+
+                        <Form<FormValues> form={form} layout="vertical" style={{ marginTop: 12 }}>
+                            <Row gutter={12}>
                                 <Col span={8}>
                                     <Form.Item
-                                        key="series"
-                                        label={[
-                                            t("tonies.addNewCustomTonieModal.series"),
-                                            <Tooltip
-                                                key="series-tooltip"
-                                                title={t("tonies.addNewCustomTonieModal.seriesHint")}
-                                            >
-                                                <InfoCircleOutlined style={{ marginLeft: 2 }} />
-                                            </Tooltip>,
-                                        ]}
+                                        label={t("tonies.addNewCustomTonieModal.series")}
                                         name="series"
                                         rules={[
-                                            {
-                                                required: true,
-                                                message: t("tonies.addNewCustomTonieModal.seriesRequired"),
-                                            },
+                                            { required: true, message: t("tonies.addNewCustomTonieModal.seriesRequired") },
                                         ]}
                                     >
-                                        <Input style={{ width: "100%" }} />
+                                        <Input />
                                     </Form.Item>
                                 </Col>
-                                <Col span={10}>
-                                    <Form.Item
-                                        key="episodes"
-                                        label={[
-                                            t("tonies.addNewCustomTonieModal.episode"),
-                                            <Tooltip
-                                                key="episodes-tooltip"
-                                                title={t("tonies.addNewCustomTonieModal.episodeHint")}
-                                            >
-                                                <InfoCircleOutlined style={{ marginLeft: 2 }} />
-                                            </Tooltip>,
-                                        ]}
-                                        name="episodes"
-                                    >
-                                        <Input style={{ width: "100%" }} />
-                                    </Form.Item>
-                                </Col>
-                                <Col span={6}>
-                                    <Form.Item
-                                        key="language"
-                                        label={[
-                                            t("tonies.addNewCustomTonieModal.language"),
-                                            <Tooltip
-                                                key="language-tooltip"
-                                                title={t("tonies.addNewCustomTonieModal.languageHint")}
-                                            >
-                                                <InfoCircleOutlined style={{ marginLeft: 2 }} />
-                                            </Tooltip>,
-                                        ]}
-                                        name="language"
-                                    >
-                                        <Input style={{ width: "100%" }} />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-                        </Col>
-                        <Col span={24}>
-                            <Row gutter={[16, 0]}>
                                 <Col span={8}>
                                     <Form.Item
-                                        key="model"
                                         label={t("tonies.addNewCustomTonieModal.model")}
                                         name="model"
                                         rules={[
-                                            {
-                                                required: true,
-                                                message: t("tonies.addNewCustomTonieModal.modelRequired"),
-                                            },
+                                            { required: true, message: t("tonies.addNewCustomTonieModal.modelRequired") },
                                         ]}
                                     >
-                                        <Input style={{ width: "100%" }} />
+                                        <Input />
                                     </Form.Item>
                                 </Col>
-                                <Col span={16}>
-                                    <Form.Item key="pic" label={t("tonies.addNewCustomTonieModal.pic")} name="pic">
-                                        <Input style={{ width: "100%" }} />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-                        </Col>
-                        <Col span={24}>
-                            <Row gutter={[16, 0]}>
                                 <Col span={8}>
-                                    <Form.Item key="no" label={t("tonies.addNewCustomTonieModal.no")} name="no">
-                                        <Input style={{ width: "100%" }} />
-                                    </Form.Item>
-                                </Col>
-                                <Col span={16}>
-                                    <Form.Item
-                                        key="title"
-                                        label={[
-                                            t("tonies.addNewCustomTonieModal.formfieldTitle"),
-                                            <Tooltip
-                                                key="title-tooltip"
-                                                title={t("tonies.addNewCustomTonieModal.formfieldTitleHint")}
-                                            >
-                                                <InfoCircleOutlined style={{ marginLeft: 2 }} />
-                                            </Tooltip>,
-                                        ]}
-                                        name="title"
-                                    >
-                                        <Input style={{ width: "100%" }} />
+                                    <Form.Item label={t("tonies.addNewCustomTonieModal.episode")} name="episodes">
+                                        <Input />
                                     </Form.Item>
                                 </Col>
                             </Row>
-                        </Col>
-                        <Col span={24}>
-                            <Row gutter={[16, 0]}>
-                                <Col span={8}>
-                                    <Form.Item
-                                        key="release"
-                                        label={t("tonies.addNewCustomTonieModal.release")}
-                                        name="release"
-                                    >
-                                        <Input style={{ width: "100%" }} />
-                                    </Form.Item>
-                                </Col>
-                                <Col span={16}>
-                                    <Form.Item
-                                        key="category"
-                                        label={t("tonies.addNewCustomTonieModal.category")}
-                                        name="category"
-                                    >
-                                        <Input style={{ width: "100%" }} />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-                        </Col>
-                        <Col span={24}>
-                            <Row gutter={[16, 0]}>
+
+                            <Row gutter={12}>
                                 <Col span={24}>
-                                    <Form.List key="audio-id-hash-list" name="audio_id">
-                                        {(fields, { add, remove }) => (
+                                    <Form.Item
+                                        label={
                                             <>
-                                                {fields.map(({ key, name, ...restField }, index) => (
-                                                    <Row key={`audio-id-hash-row-${key}`} gutter={[16, 0]}>
-                                                        <Col span={8}>
-                                                            <Form.Item
-                                                                {...restField}
-                                                                key={`audio-id-${key}`}
-                                                                name={[name, "audio_id"]}
-                                                                label={
-                                                                    <div key={`audio-id-label-${key}`}>
-                                                                        {index === 0
-                                                                            ? t("tonies.addNewCustomTonieModal.audioId")
-                                                                            : ""}
-                                                                    </div>
-                                                                }
-                                                            >
-                                                                <Input style={{ width: "100%" }} />
-                                                            </Form.Item>
-                                                        </Col>
-                                                        <Col span={16}>
-                                                            <Form.Item
-                                                                {...restField}
-                                                                key={`hash-${key}`}
-                                                                name={[name, "hash"]}
-                                                                label={
-                                                                    <div key={`hash-label-${key}`}>
-                                                                        {index === 0
-                                                                            ? t("tonies.addNewCustomTonieModal.hash")
-                                                                            : ""}
-                                                                    </div>
-                                                                }
-                                                            >
-                                                                <Input
-                                                                    style={{ width: "100%" }}
-                                                                    suffix={
-                                                                        <Button
-                                                                            key={`audio-id-hash-remove-${key}`}
-                                                                            type="link"
-                                                                            onClick={() => remove(name)}
-                                                                            style={{ height: "auto", margin: -2 }}
-                                                                        >
-                                                                            {t("tonies.addNewCustomTonieModal.remove")}
-                                                                        </Button>
-                                                                    }
-                                                                />
-                                                            </Form.Item>
-                                                        </Col>
-                                                    </Row>
-                                                ))}
-                                                <Form.Item key="add-audio-id-hash">
-                                                    <Button type="dashed" onClick={() => add()} block>
-                                                        {t("tonies.addNewCustomTonieModal.addAudioIdHash")}
-                                                    </Button>
-                                                </Form.Item>
+                                                {t("tonies.addNewCustomTonieModal.pic")}
+                                                <Tooltip
+                                                    title={
+                                                        "Extern: https://example.com/images/biene-maja.png | Lokal: /custom_img/images/custom-tonies/biene-maja-coin.png"
+                                                    }
+                                                >
+                                                    <InfoCircleOutlined style={{ marginLeft: 6 }} />
+                                                </Tooltip>
                                             </>
-                                        )}
-                                    </Form.List>
+                                        }
+                                        name="pic"
+                                    >
+                                        <Input list="custom-image-options" />
+                                    </Form.Item>
+                                    <datalist id="custom-image-options">
+                                        {imagePathOptions.map((path) => (
+                                            <option key={path} value={path} />
+                                        ))}
+                                    </datalist>
+                                    <Space style={{ marginBottom: 12 }}>
+                                        <Button onClick={handleOpenPicker}>Bild auswaehlen</Button>
+                                        <Button onClick={handleOpenUploader}>Bild hochladen</Button>
+                                        <Button
+                                            onClick={() => {
+                                                const pic = form.getFieldValue("pic");
+                                                if (!pic) return;
+                                                setPreviewUrl(pic);
+                                                setPreviewOpen(true);
+                                            }}
+                                            disabled={!selectedPic}
+                                        >
+                                            Vorschau
+                                        </Button>
+                                    </Space>
                                 </Col>
                             </Row>
-                        </Col>
-                        <Col span={24}>
-                            <Form.List key="track-list" name="tracks">
+
+                            <Row gutter={12}>
+                                <Col span={8}>
+                                    <Form.Item label={t("tonies.addNewCustomTonieModal.no")} name="no">
+                                        <Input />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={16}>
+                                    <Form.Item label={t("tonies.addNewCustomTonieModal.formfieldTitle")} name="title">
+                                        <Input />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+
+                            <Row gutter={12}>
+                                <Col span={8}>
+                                    <Form.Item label={t("tonies.addNewCustomTonieModal.release")} name="release">
+                                        <Input />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={8}>
+                                    <Form.Item label={t("tonies.addNewCustomTonieModal.language")} name="language">
+                                        <Input />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={8}>
+                                    <Form.Item label={t("tonies.addNewCustomTonieModal.category")} name="category">
+                                        <Input />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+
+                            <Form.List name="audioPairs">
                                 {(fields, { add, remove }) => (
                                     <>
-                                        {fields.map(({ key, name, ...restField }, index) => (
-                                            <Row key={`track-row-${key}`} gutter={[16, 0]}>
-                                                <Col span={24}>
+                                        {fields.map(({ key, name, ...restField }, idx) => (
+                                            <Row key={key} gutter={12}>
+                                                <Col span={8}>
                                                     <Form.Item
                                                         {...restField}
-                                                        key={`track-${key}`}
-                                                        name={[name, "track"]}
-                                                        label={
-                                                            <div key={`track-label-${key}`}>
-                                                                {index === 0
-                                                                    ? t("tonies.addNewCustomTonieModal.track")
-                                                                    : ""}
-                                                            </div>
-                                                        }
+                                                        name={[name, "audio_id"]}
+                                                        label={idx === 0 ? t("tonies.addNewCustomTonieModal.audioId") : ""}
                                                     >
-                                                        <Input
-                                                            key={"input-track-" + key}
-                                                            style={{ width: "100%" }}
-                                                            suffix={
-                                                                <Button
-                                                                    key={`track-remove-${key}`}
-                                                                    type="link"
-                                                                    onClick={() => remove(name)}
-                                                                    style={{ height: "auto", margin: -2 }}
-                                                                >
-                                                                    {t("tonies.addNewCustomTonieModal.remove")}
-                                                                </Button>
-                                                            }
-                                                        />
+                                                        <Input />
                                                     </Form.Item>
+                                                </Col>
+                                                <Col span={14}>
+                                                    <Form.Item
+                                                        {...restField}
+                                                        name={[name, "hash"]}
+                                                        label={idx === 0 ? t("tonies.addNewCustomTonieModal.hash") : ""}
+                                                    >
+                                                        <Input />
+                                                    </Form.Item>
+                                                </Col>
+                                                <Col span={2}>
+                                                    <Button style={{ marginTop: idx === 0 ? 30 : 0 }} onClick={() => remove(name)}>
+                                                        -
+                                                    </Button>
                                                 </Col>
                                             </Row>
                                         ))}
-                                        <Form.Item key="add-track">
-                                            <Button type="dashed" onClick={() => add()} block>
-                                                {t("tonies.addNewCustomTonieModal.addTrack")}
-                                            </Button>
-                                        </Form.Item>
+                                        <Button type="dashed" onClick={() => add()} block>
+                                            {t("tonies.addNewCustomTonieModal.addAudioIdHash")}
+                                        </Button>
                                     </>
                                 )}
                             </Form.List>
-                        </Col>
-                    </Row>
-                </Form>
+
+                            <Form.List name="tracks">
+                                {(fields, { add, remove }) => (
+                                    <>
+                                        {fields.map(({ key, name, ...restField }, idx) => (
+                                            <Row key={key} gutter={12} style={{ marginTop: 8 }}>
+                                                <Col span={22}>
+                                                    <Form.Item
+                                                        {...restField}
+                                                        name={[name, "track"]}
+                                                        label={idx === 0 ? t("tonies.addNewCustomTonieModal.track") : ""}
+                                                    >
+                                                        <Input />
+                                                    </Form.Item>
+                                                </Col>
+                                                <Col span={2}>
+                                                    <Button style={{ marginTop: idx === 0 ? 30 : 0 }} onClick={() => remove(name)}>
+                                                        -
+                                                    </Button>
+                                                </Col>
+                                            </Row>
+                                        ))}
+                                        <Button type="dashed" onClick={() => add()} block>
+                                            {t("tonies.addNewCustomTonieModal.addTrack")}
+                                        </Button>
+                                    </>
+                                )}
+                            </Form.List>
+                        </Form>
+                    </Col>
+                </Row>
             </Modal>
-            {/* remove next line later when API is available */}
-            {jsonViewerModal}
+
+            <Modal
+                title="Bild auswaehlen"
+                open={pickerOpen}
+                onCancel={() => setPickerOpen(false)}
+                onOk={() => {
+                    if (pickerSelection) {
+                        form.setFieldValue("pic", pickerSelection);
+                    }
+                    setPickerOpen(false);
+                }}
+                width={1000}
+            >
+                <SelectFileFileBrowser
+                    special="custom_img"
+                    initialPath={pickerPath}
+                    filetypeFilter={IMAGE_EXTENSIONS}
+                    trackUrl={false}
+                    maxSelectedRows={1}
+                    onFileSelectChange={(files, path) => {
+                        if (files.length !== 1) return;
+                        setPickerSelection(toCustomImgWebPath(path, files[0].name));
+                    }}
+                />
+            </Modal>
+
+            <UploadFilesModal
+                open={uploadOpen}
+                onClose={() => setUploadOpen(false)}
+                path={uploadPath}
+                special="custom_img"
+                uploadFileList={uploadFileList}
+                setUploadFileList={setUploadFileList}
+                setRebuildList={setUploadRebuild}
+                onUploadedFiles={(files, path) => {
+                    if (files.length > 0) {
+                        form.setFieldValue("pic", toCustomImgWebPath(path, files[0]));
+                    }
+                    void collectImagePaths();
+                }}
+            />
+
+            <Modal title="Bildvorschau" open={previewOpen} onCancel={() => setPreviewOpen(false)} footer={null}>
+                {previewUrl ? <img src={previewUrl} alt="preview" style={{ width: "100%" }} /> : null}
+            </Modal>
         </>
     );
 };

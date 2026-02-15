@@ -1786,7 +1786,7 @@
             "title": "Neuen Custom Tonie/Tag anlegen",
             "track": "Track"
         },
-        "addToniesCustomJsonEntry": "WIP: Modell anlegen",
+        "addToniesCustomJsonEntry": "Custom-Modelle verwalten",
         "alternativeSource": "Der Toniefigur {{originalTonie}} ist der Inhalt {{assignedContent}} zugewiesen!",
         "alternativeSourceUnknown": "Der Toniefigur {{originalTonie}} ist alternativer Inhalt zugewiesen!",
         "cancel": "Abbrechen",
