@@ -23,6 +23,7 @@ interface UploadFilesModalProps {
     setUploadFileList: React.Dispatch<React.SetStateAction<UploadFile<any>[]>>;
 
     setRebuildList: React.Dispatch<React.SetStateAction<boolean>>;
+    onUploadedFiles?: (files: string[], path: string, special: string) => void;
 }
 
 const UploadFilesModal: React.FC<UploadFilesModalProps> = ({
@@ -34,6 +35,7 @@ const UploadFilesModal: React.FC<UploadFilesModalProps> = ({
     setUploadFileList,
 
     setRebuildList,
+    onUploadedFiles,
 }) => {
     const { t } = useTranslation();
     const { token } = useToken();
@@ -70,6 +72,7 @@ const UploadFilesModal: React.FC<UploadFilesModalProps> = ({
 
         setUploading(true);
         let failure = false;
+        const uploadedFileNames: string[] = [];
         const key = "uploading-" + files.length + "-" + new Date();
 
         for (let i = 0; i < files.length; i++) {
@@ -91,6 +94,7 @@ const UploadFilesModal: React.FC<UploadFilesModalProps> = ({
                 );
                 if (response.ok) {
                     setUploadFileList((prevList) => prevList.filter((f) => f.uid !== file.uid));
+                    uploadedFileNames.push(file.name as string);
                     addNotification(
                         NotificationTypeEnum.Success,
                         t("fileBrowser.upload.uploadedFile"),
@@ -126,6 +130,9 @@ const UploadFilesModal: React.FC<UploadFilesModalProps> = ({
         closeLoadingNotification(key);
 
         setRebuildList((prev) => !prev);
+        if (uploadedFileNames.length > 0 && onUploadedFiles) {
+            onUploadedFiles(uploadedFileNames, path, special);
+        }
 
         if (failure) {
             addNotification(
