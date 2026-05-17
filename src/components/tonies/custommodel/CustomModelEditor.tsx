@@ -13,7 +13,6 @@ import {
     Row,
     Space,
     theme,
-    Tooltip,
     Typography,
 } from "antd";
 import { DeleteOutlined } from "@ant-design/icons";
@@ -46,6 +45,7 @@ import {
 import {
     cloneEntry,
     normalizeText,
+    normalizeEntryFromApi,
     normalizeAudioPairs,
     normalizeTracks,
     areStringArraysEqual,
@@ -111,6 +111,7 @@ export const CustomModelEditor: React.FC<CustomModelEditorProps> = ({
     const [form] = Form.useForm<FormValues>();
 
     const [saving, setSaving] = useState(false);
+    const [listLoading, setListLoading] = useState(false);
 
     const [customEntries, setCustomEntries] = useState<CustomEntry[]>([]);
     const [persistedEntries, setPersistedEntries] = useState<CustomEntry[]>([]);
@@ -129,7 +130,7 @@ export const CustomModelEditor: React.FC<CustomModelEditorProps> = ({
 
     const [imagePathOptions, setImagePathOptions] = useState<string[]>([]);
     const imagePathsCollectedRef = useRef(false);
-    const [tableSortColumn, setTableSortColumn] = useState<SortColumnKey>("model");
+    const [tableSortColumn, setTableSortColumn] = useState<SortColumnKey>("series");
     const [tableSortOrder, setTableSortOrder] = useState<SortOrder>("ascend");
     const [filterText, setFilterText] = useState("");
     const [filterFields, setFilterFields] = useState<FilterFieldKey[]>(["series", "model"]);
@@ -189,7 +190,7 @@ export const CustomModelEditor: React.FC<CustomModelEditorProps> = ({
             const audioIds = entry.audio_id || [];
             const hashes = entry.hash || [];
             for (let j = 0; j < Math.min(audioIds.length, hashes.length); j++) {
-                const pair = `${audioIds[j]}::${hashes[j].toLowerCase()}`;
+                const pair = `${normalizeText(audioIds[j])}::${normalizeText(hashes[j]).toLowerCase()}`;
                 if (pairMap.has(pair)) {
                     return {
                         error: t("tonies.customEditor.errors.duplicateAudioHash", {
@@ -220,8 +221,8 @@ export const CustomModelEditor: React.FC<CustomModelEditorProps> = ({
 
     const categoryOptions = useMemo(() => {
         const counts = new Map<string, number>();
-        const addCategory = (value?: string) => {
-            const normalized = String(value || "").trim();
+        const addCategory = (value?: unknown) => {
+            const normalized = normalizeText(value);
             if (!normalized) return;
             counts.set(normalized, (counts.get(normalized) || 0) + 1);
         };
@@ -476,6 +477,7 @@ export const CustomModelEditor: React.FC<CustomModelEditorProps> = ({
     };
 
     const loadJsonData = async () => {
+        setListLoading(true);
         try {
             const [customResponse, baseResponse] = await Promise.all([
                 api.apiGetTeddyCloudApiRaw("/api/toniesCustomJson"),
@@ -486,8 +488,12 @@ export const CustomModelEditor: React.FC<CustomModelEditorProps> = ({
                 customResponse.json(),
                 baseResponse.json(),
             ]);
-            const normalizedCustom = Array.isArray(customData) ? customData : [];
-            const normalizedBase = Array.isArray(baseData) ? baseData : [];
+            const normalizedCustom = Array.isArray(customData)
+                ? customData.map((entry) => normalizeEntryFromApi(entry))
+                : [];
+            const normalizedBase = Array.isArray(baseData)
+                ? baseData.map((entry) => normalizeEntryFromApi(entry))
+                : [];
             setCustomEntries(normalizedCustom);
             setPersistedEntries(normalizedCustom);
             setBaseEntries(normalizedBase);
@@ -536,6 +542,8 @@ export const CustomModelEditor: React.FC<CustomModelEditorProps> = ({
                 String(error),
                 t("tonies.customToniesEditorJsonEntry"),
             );
+        } finally {
+            setListLoading(false);
         }
     };
 
@@ -930,6 +938,7 @@ export const CustomModelEditor: React.FC<CustomModelEditorProps> = ({
                         />
 
                         <CustomModelList
+                            loading={listLoading}
                             tableRows={tableRows}
                             paginatedRows={paginatedRows}
                             paginationEnabled={paginationEnabled}
@@ -969,7 +978,7 @@ export const CustomModelEditor: React.FC<CustomModelEditorProps> = ({
                                 type="error"
                                 showIcon
                                 style={{ marginBottom: 8 }}
-                                message={t("tonies.customEditor.validation.title")}
+                                title={t("tonies.customEditor.validation.title")}
                                 description={
                                     <Space direction="vertical">
                                         {validationMessages.map((issue) => (

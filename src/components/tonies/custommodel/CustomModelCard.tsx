@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Card, Popconfirm, Tooltip, theme } from "antd";
+import { Card, Popconfirm, theme } from "antd";
 import { CopyOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { toImageSrc, toPreviewableImageUrl } from "../common/utils/imagePathUtils";
 
@@ -77,28 +77,28 @@ export const CustomModelCard: React.FC<CustomModelCardProps> = ({
                     </div>
                 }
                 actions={[
-                    <Tooltip key="edit" title={t("tonies.customEditor.actions.edit")}>
-                        <span
-                            onClick={() => onEdit(idx)}
-                            style={{ cursor: "pointer" }}
-                            onKeyDown={(e) => e.key === "Enter" && onEdit(idx)}
-                            role="button"
-                            tabIndex={0}
-                        >
-                            <EditOutlined />
-                        </span>
-                    </Tooltip>,
-                    <Tooltip key="dup" title={t("tonies.customEditor.actions.duplicate")}>
-                        <span
-                            onClick={() => onDuplicate(idx)}
-                            style={{ cursor: "pointer" }}
-                            onKeyDown={(e) => e.key === "Enter" && onDuplicate(idx)}
-                            role="button"
-                            tabIndex={0}
-                        >
-                            <CopyOutlined />
-                        </span>
-                    </Tooltip>,
+                    <span
+                        key="edit"
+                        onClick={() => onEdit(idx)}
+                        style={{ cursor: "pointer" }}
+                        onKeyDown={(e) => e.key === "Enter" && onEdit(idx)}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={t("tonies.customEditor.actions.edit")}
+                    >
+                        <EditOutlined />
+                    </span>,
+                    <span
+                        key="dup"
+                        onClick={() => onDuplicate(idx)}
+                        style={{ cursor: "pointer" }}
+                        onKeyDown={(e) => e.key === "Enter" && onDuplicate(idx)}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={t("tonies.customEditor.actions.duplicate")}
+                    >
+                        <CopyOutlined />
+                    </span>,
                     <Popconfirm
                         key="del"
                         title={t("tonies.customEditor.deleteConfirm.title")}
@@ -109,15 +109,14 @@ export const CustomModelCard: React.FC<CustomModelCardProps> = ({
                         okText={t("tonies.customEditor.deleteConfirm.confirm")}
                         cancelText={t("tonies.customEditor.deleteConfirm.abort")}
                     >
-                        <Tooltip title={t("tonies.customEditor.actions.delete")}>
-                            <span
-                                style={{ cursor: "pointer", color: token.colorError }}
-                                role="button"
-                                tabIndex={0}
-                            >
-                                <DeleteOutlined />
-                            </span>
-                        </Tooltip>
+                        <span
+                            style={{ cursor: "pointer", color: token.colorError }}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={t("tonies.customEditor.actions.delete")}
+                        >
+                            <DeleteOutlined />
+                        </span>
                     </Popconfirm>,
                 ]}
             >
