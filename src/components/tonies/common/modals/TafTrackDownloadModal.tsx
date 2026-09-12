@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Flex, Modal, Table, theme } from "antd";
+import { Button, Checkbox, Flex, Modal, Table, theme } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { DownloadOutlined, PlayCircleOutlined } from "@ant-design/icons";
+import styled from "styled-components";
 
 import {
     buildTafDownloadUrl,
@@ -11,6 +12,24 @@ import {
 import { padTrackNumber, sanitizeDownloadName } from "../../../../utils/files/sanitizeDownloadName";
 
 const { useToken } = theme;
+
+const TrackTableWrap = styled.div`
+    .ant-table-selection-column {
+        width: 52px;
+        min-width: 52px;
+    }
+    .ant-table-selection-column .ant-checkbox-wrapper {
+        padding: 10px;
+        margin-inline: 0;
+    }
+    .ant-checkbox .ant-checkbox-inner {
+        width: 20px;
+        height: 20px;
+    }
+    .ant-table-tbody > tr > td {
+        vertical-align: middle;
+    }
+`;
 
 export type TafDownloadTrack = {
     number: number;
@@ -117,6 +136,9 @@ export const TafDownloadPanel: React.FC<TafDownloadPanelProps> = ({
         );
     }
 
+    const allSelected = selectedKeys.length === tracks.length && tracks.length > 0;
+    const someSelected = selectedKeys.length > 0 && !allSelected;
+
     const columns: ColumnsType<TafDownloadTrack> = [
         ...(onPlayTrack
             ? [
@@ -137,16 +159,15 @@ export const TafDownloadPanel: React.FC<TafDownloadPanelProps> = ({
               ]
             : []),
         {
-            title: "#",
-            dataIndex: "number",
-            width: 48,
-            render: (value: number) => padTrackNumber(value),
-        },
-        {
-            title: t("tonies.tafDownload.track"),
-            dataIndex: "title",
-            render: (title: string, record) =>
-                title || t("tonies.tafDownload.unnamedTrack", { number: record.number }),
+            title: t("tonies.tafDownload.selectedCount", {
+                selected: selectedKeys.length,
+                total: tracks.length,
+            }),
+            key: "track",
+            render: (_: unknown, record: TafDownloadTrack) =>
+                `${padTrackNumber(record.number)}  ${
+                    record.title || t("tonies.tafDownload.unnamedTrack", { number: record.number })
+                }`,
         },
         {
             title: t("tonies.tafDownload.duration"),
@@ -158,40 +179,54 @@ export const TafDownloadPanel: React.FC<TafDownloadPanelProps> = ({
 
     return (
         <Flex vertical gap={12}>
-            <Table<TafDownloadTrack>
-                size={compact ? "small" : "middle"}
-                pagination={false}
-                rowKey="number"
-                dataSource={tracks}
-                columns={columns}
-                scroll={{ x: true }}
-                rowSelection={{
-                    selectedRowKeys: selectedKeys,
-                    onChange: (keys) => setSelectedKeys(keys.map((key) => Number(key))),
-                    columnWidth: 48,
-                }}
-                onRow={(record) => ({
-                    onClick: (event) => {
-                        const target = event.target as HTMLElement;
-                        if (
-                            target.closest(".ant-checkbox-wrapper") ||
-                            target.closest(".anticon-play-circle")
-                        ) {
-                            return;
-                        }
-                        setSelectedKeys((current) =>
-                            current.includes(record.number)
-                                ? current.filter((key) => key !== record.number)
-                                : [...current, record.number],
-                        );
-                    },
-                    style: { cursor: "pointer" },
-                })}
-                style={{
-                    border: `1px solid ${token.colorBorderSecondary}`,
-                    borderRadius: token.borderRadius,
-                }}
-            />
+            <TrackTableWrap>
+                <Table<TafDownloadTrack>
+                    size={compact ? "small" : "middle"}
+                    pagination={false}
+                    rowKey="number"
+                    dataSource={tracks}
+                    columns={columns}
+                    sticky
+                    scroll={{ x: true }}
+                    rowSelection={{
+                        selectedRowKeys: selectedKeys,
+                        hideSelectAll: true,
+                        columnWidth: 52,
+                        columnTitle: (
+                            <Checkbox
+                                checked={allSelected}
+                                indeterminate={someSelected}
+                                onChange={(event) =>
+                                    setSelectedKeys(event.target.checked ? allKeys : [])
+                                }
+                                aria-label={t("tonies.tafDownload.selectAll")}
+                            />
+                        ),
+                        onChange: (keys) => setSelectedKeys(keys.map((key) => Number(key))),
+                    }}
+                    onRow={(record) => ({
+                        onClick: (event) => {
+                            const target = event.target as HTMLElement;
+                            if (
+                                target.closest(".ant-checkbox-wrapper") ||
+                                target.closest(".anticon-play-circle")
+                            ) {
+                                return;
+                            }
+                            setSelectedKeys((current) =>
+                                current.includes(record.number)
+                                    ? current.filter((key) => key !== record.number)
+                                    : [...current, record.number],
+                            );
+                        },
+                        style: { cursor: "pointer" },
+                    })}
+                    style={{
+                        border: `1px solid ${token.colorBorderSecondary}`,
+                        borderRadius: token.borderRadius,
+                    }}
+                />
+            </TrackTableWrap>
             <Flex
                 gap={8}
                 wrap="wrap"

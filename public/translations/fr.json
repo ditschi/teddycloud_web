@@ -2176,6 +2176,8 @@
             "downloadOne": "Télécharger 1 piste",
             "duration": "Durée",
             "modalTitle": "Télécharger les pistes",
+            "selectAll": "Sélectionner toutes les pistes",
+            "selectedCount": "{{selected}} sur {{total}} sélectionnées",
             "track": "Piste",
             "unnamedTrack": "Piste {{number}}"
         },
