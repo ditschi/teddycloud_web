@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Divider, Flex, Form, Input, Switch, Table, Typography } from "antd";
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { Alert, Button, Flex, Form, Input, Switch, Table, Typography } from "antd";
+import { DeleteOutlined, KeyOutlined, PlusOutlined } from "@ant-design/icons";
 
 import ConfirmationDialog from "../../common/modals/ConfirmationModal";
 import { useAuth } from "../../../provider/AuthProvider";
+import { useTeddyCloud } from "../../../provider/TeddyCloudProvider";
+import { NotificationTypeEnum } from "../../../types/teddyCloudNotificationTypes";
 import {
     changeAuthPassword,
     createAuthUser,
@@ -17,15 +19,18 @@ const { Title, Paragraph, Text } = Typography;
 
 export const WebAuthSettings = () => {
     const { t } = useTranslation();
-    const { refresh, username: currentUsername } = useAuth();
+    const { refresh } = useAuth();
+    const { addNotification } = useTeddyCloud();
     const [users, setUsers] = useState<string[]>([]);
     const [enabled, setEnabled] = useState(false);
     const [envOverride, setEnvOverride] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [userToDelete, setUserToDelete] = useState<string | null>(null);
+    const [passwordUser, setPasswordUser] = useState<string | null>(null);
+    const [newPassword, setNewPassword] = useState("");
+    const [passwordSaving, setPasswordSaving] = useState(false);
     const [createForm] = Form.useForm();
-    const [passwordForm] = Form.useForm();
 
     const load = async () => {
         setLoading(true);
@@ -69,14 +74,32 @@ export const WebAuthSettings = () => {
         }
     };
 
-    const handlePassword = async (values: { username: string; password: string }) => {
+    const togglePasswordRow = (username: string) => {
         setError(null);
+        setNewPassword("");
+        setPasswordUser((current) => (current === username ? null : username));
+    };
+
+    const savePassword = async () => {
+        if (!passwordUser || newPassword.length < 4) {
+            return;
+        }
+        setError(null);
+        setPasswordSaving(true);
         try {
-            await changeAuthPassword(values.username, values.password);
-            passwordForm.resetFields(["password"]);
-            await load();
+            await changeAuthPassword(passwordUser, newPassword);
+            addNotification(
+                NotificationTypeEnum.Success,
+                t("settings.webAuth.passwordChanged"),
+                t("settings.webAuth.passwordChangedDetails", { username: passwordUser }),
+                t("settings.webAuth.navigationTitle"),
+            );
+            setPasswordUser(null);
+            setNewPassword("");
         } catch (err) {
             setError(err instanceof Error ? err.message : t("settings.webAuth.saveFailed"));
+        } finally {
+            setPasswordSaving(false);
         }
     };
 
@@ -87,6 +110,10 @@ export const WebAuthSettings = () => {
         setError(null);
         try {
             const result = await deleteAuthUser(userToDelete);
+            if (passwordUser === userToDelete) {
+                setPasswordUser(null);
+                setNewPassword("");
+            }
             setUserToDelete(null);
             await load();
             await refresh();
@@ -139,20 +166,66 @@ export const WebAuthSettings = () => {
                 pagination={false}
                 rowKey="username"
                 dataSource={users.map((username) => ({ username }))}
+                expandable={{
+                    expandedRowKeys: passwordUser ? [passwordUser] : [],
+                    showExpandColumn: false,
+                    expandedRowRender: (record: { username: string }) => (
+                        <Flex gap={8} wrap="wrap" align="center">
+                            <Input.Password
+                                autoComplete="new-password"
+                                placeholder={t("auth.newPassword")}
+                                value={newPassword}
+                                onChange={(event) => setNewPassword(event.target.value)}
+                                onPressEnter={() => void savePassword()}
+                                style={{ minHeight: 44, minWidth: 200, flex: "1 1 200px" }}
+                                aria-label={t("settings.webAuth.changePasswordFor", {
+                                    username: record.username,
+                                })}
+                            />
+                            <Button
+                                type="primary"
+                                loading={passwordSaving}
+                                disabled={newPassword.length < 4}
+                                onClick={() => void savePassword()}
+                                style={{ minHeight: 44 }}
+                            >
+                                {t("settings.webAuth.changePassword")}
+                            </Button>
+                            <Button
+                                onClick={() => togglePasswordRow(record.username)}
+                                style={{ minHeight: 44 }}
+                            >
+                                {t("common.cancel")}
+                            </Button>
+                        </Flex>
+                    ),
+                }}
                 columns={[
                     { title: t("auth.username"), dataIndex: "username" },
                     {
                         title: "",
                         key: "actions",
-                        width: 72,
+                        width: 112,
                         render: (_: unknown, record: { username: string }) => (
-                            <Button
-                                type="text"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={() => setUserToDelete(record.username)}
-                                aria-label={t("settings.webAuth.deleteUser")}
-                            />
+                            <Flex justify="flex-end">
+                                <Button
+                                    type="text"
+                                    icon={<KeyOutlined />}
+                                    onClick={() => togglePasswordRow(record.username)}
+                                    aria-label={t("settings.webAuth.changePasswordFor", {
+                                        username: record.username,
+                                    })}
+                                    style={{ minHeight: 44, minWidth: 44 }}
+                                />
+                                <Button
+                                    type="text"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    onClick={() => setUserToDelete(record.username)}
+                                    aria-label={t("settings.webAuth.deleteUser")}
+                                    style={{ minHeight: 44, minWidth: 44 }}
+                                />
+                            </Flex>
                         ),
                     },
                 ]}
@@ -192,41 +265,6 @@ export const WebAuthSettings = () => {
                     {t("settings.webAuth.addUser")}
                 </Button>
             </Form>
-
-            {users.length > 0 ? (
-                <>
-                    <Divider />
-                    <Title level={4}>{t("settings.webAuth.changePassword")}</Title>
-                    <Form
-                        form={passwordForm}
-                        layout="vertical"
-                        onFinish={handlePassword}
-                        initialValues={{ username: currentUsername || users[0] }}
-                        style={{ maxWidth: 420 }}
-                    >
-                        <Form.Item
-                            name="username"
-                            label={t("auth.username")}
-                            rules={[{ required: true }]}
-                        >
-                            <Input style={{ minHeight: 44 }} />
-                        </Form.Item>
-                        <Form.Item
-                            name="password"
-                            label={t("auth.newPassword")}
-                            rules={[
-                                { required: true, message: t("auth.passwordRequired") },
-                                { min: 4, message: t("auth.passwordMin") },
-                            ]}
-                        >
-                            <Input.Password autoComplete="new-password" style={{ minHeight: 44 }} />
-                        </Form.Item>
-                        <Button htmlType="submit" style={{ minHeight: 44 }}>
-                            {t("settings.webAuth.changePassword")}
-                        </Button>
-                    </Form>
-                </>
-            ) : null}
 
             <ConfirmationDialog
                 title={

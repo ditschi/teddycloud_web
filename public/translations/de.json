@@ -1047,6 +1047,9 @@
             "intro": "Alle Benutzer haben vollen Zugriff auf die Weboberfläche. Die Box-APIs sind nicht betroffen.",
             "loadFailed": "Benutzer konnten nicht geladen werden",
             "navigationTitle": "Web-Login",
+            "passwordChanged": "Passwort aktualisiert",
+            "passwordChangedDetails": "Passwort für {{username}} wurde aktualisiert.",
+            "changePasswordFor": "Passwort für {{username}} ändern",
             "saveFailed": "Änderungen konnten nicht gespeichert werden",
             "title": "Web-Login",
             "users": "Benutzer"

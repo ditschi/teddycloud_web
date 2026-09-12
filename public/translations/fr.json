@@ -1047,6 +1047,9 @@
             "intro": "Tous les utilisateurs ont un accès complet à l'interface web. Les API des boîtes ne sont pas concernées.",
             "loadFailed": "Impossible de charger les utilisateurs",
             "navigationTitle": "Connexion web",
+            "passwordChanged": "Mot de passe mis à jour",
+            "passwordChangedDetails": "Le mot de passe de {{username}} a été mis à jour.",
+            "changePasswordFor": "Changer le mot de passe de {{username}}",
             "saveFailed": "Impossible d'enregistrer les modifications",
             "title": "Connexion web",
             "users": "Utilisateurs"

@@ -1047,6 +1047,9 @@
             "intro": "Todos los usuarios tienen acceso completo a la interfaz web. Las APIs de las cajas no se ven afectadas.",
             "loadFailed": "No se pudieron cargar los usuarios",
             "navigationTitle": "Inicio de sesión web",
+            "passwordChanged": "Contraseña actualizada",
+            "passwordChangedDetails": "La contraseña de {{username}} se ha actualizado.",
+            "changePasswordFor": "Cambiar la contraseña de {{username}}",
             "saveFailed": "No se pudieron guardar los cambios",
             "title": "Inicio de sesión web",
             "users": "Usuarios"
