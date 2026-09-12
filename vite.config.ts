@@ -1,12 +1,19 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import fs from "fs";
 import path from "path";
 
 export default defineConfig(({ command, mode }) => {
-    const portHttp = parseInt(process.env.VITE_APP_TEDDYCLOUD_PORT_HTTP || "3000", 10);
-    const portHttps = parseInt(process.env.VITE_APP_TEDDYCLOUD_PORT_HTTPS || "3443", 10);
-    const useHttps = process.env.HTTPS === "true";
+    const env = loadEnv(mode, process.cwd(), "");
+    const portHttp = parseInt(
+        env.VITE_APP_TEDDYCLOUD_PORT_HTTP || process.env.VITE_APP_TEDDYCLOUD_PORT_HTTP || "3000",
+        10,
+    );
+    const portHttps = parseInt(
+        env.VITE_APP_TEDDYCLOUD_PORT_HTTPS || process.env.VITE_APP_TEDDYCLOUD_PORT_HTTPS || "3443",
+        10,
+    );
+    const useHttps = (process.env.HTTPS || env.HTTPS) === "true";
 
     const httpsOptions = useHttps
         ? {
@@ -15,9 +22,16 @@ export default defineConfig(({ command, mode }) => {
           }
         : undefined;
 
-    const proxyUrl = process.env.VITE_APP_TEDDYCLOUD_API_URL
-        ? process.env.VITE_APP_TEDDYCLOUD_API_URL.replace(/^https:/, "http:")
-        : "http://teddycloud.local";
+    const rawProxy =
+        process.env.TEDDYCLOUD_PROXY_URL ||
+        env.TEDDYCLOUD_PROXY_URL ||
+        process.env.VITE_APP_TEDDYCLOUD_API_URL ||
+        env.VITE_APP_TEDDYCLOUD_API_URL ||
+        "";
+    const proxyUrl = (rawProxy.trim() ? rawProxy : "http://teddycloud.local").replace(
+        /^https:/,
+        "http:",
+    );
 
     return {
         base: "/web",
