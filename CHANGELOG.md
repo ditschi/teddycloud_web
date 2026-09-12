@@ -2,6 +2,7 @@
 
 ## 0.7.1
 
+- gui: Download TAF tracks as separate .ogg files (ZIP when more than one track is selected)
 - gui: fixed missing images in library [https://github.com/toniebox-reverse-engineering/teddycloud_web/issues/320](https://github.com/toniebox-reverse-engineering/teddycloud_web/issues/320)
 
 ### Commits
