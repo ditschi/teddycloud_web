@@ -2144,6 +2144,8 @@
             "downloadOne": "Download 1 track",
             "duration": "Time",
             "modalTitle": "Download tracks",
+            "selectAll": "Select all tracks",
+            "selectedCount": "{{selected}} of {{total}} selected",
             "track": "Track",
             "unnamedTrack": "Track {{number}}"
         },
