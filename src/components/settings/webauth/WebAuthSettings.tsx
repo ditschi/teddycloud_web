@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Flex, Form, Input, Switch, Table, Typography } from "antd";
+import { Alert, Button, Flex, Form, Input, Switch, Table, Tooltip, Typography } from "antd";
 import { DeleteOutlined, KeyOutlined, PlusOutlined } from "@ant-design/icons";
 
 import ConfirmationDialog from "../../common/modals/ConfirmationModal";
@@ -201,30 +201,42 @@ export const WebAuthSettings = () => {
                     ),
                 }}
                 columns={[
-                    { title: t("auth.username"), dataIndex: "username" },
+                    {
+                        title: t("auth.username"),
+                        dataIndex: "username",
+                        render: (username: string, record: { username: string }) => (
+                            <Flex align="center" gap={4} wrap="wrap">
+                                <Text>{username}</Text>
+                                <Tooltip title={t("settings.webAuth.changePasswordFor", { username })}>
+                                    <Button
+                                        type="text"
+                                        icon={<KeyOutlined />}
+                                        onClick={() => togglePasswordRow(record.username)}
+                                        aria-label={t("settings.webAuth.changePasswordFor", {
+                                            username,
+                                        })}
+                                        style={{ minHeight: 44, minWidth: 44 }}
+                                    />
+                                </Tooltip>
+                            </Flex>
+                        ),
+                    },
                     {
                         title: "",
                         key: "actions",
-                        width: 112,
+                        width: 56,
                         render: (_: unknown, record: { username: string }) => (
                             <Flex justify="flex-end">
-                                <Button
-                                    type="text"
-                                    icon={<KeyOutlined />}
-                                    onClick={() => togglePasswordRow(record.username)}
-                                    aria-label={t("settings.webAuth.changePasswordFor", {
-                                        username: record.username,
-                                    })}
-                                    style={{ minHeight: 44, minWidth: 44 }}
-                                />
-                                <Button
-                                    type="text"
-                                    danger
-                                    icon={<DeleteOutlined />}
-                                    onClick={() => setUserToDelete(record.username)}
-                                    aria-label={t("settings.webAuth.deleteUser")}
-                                    style={{ minHeight: 44, minWidth: 44 }}
-                                />
+                                <Tooltip title={t("settings.webAuth.deleteUser")}>
+                                    <Button
+                                        type="text"
+                                        danger
+                                        icon={<DeleteOutlined />}
+                                        onClick={() => setUserToDelete(record.username)}
+                                        aria-label={t("settings.webAuth.deleteUser")}
+                                        style={{ minHeight: 44, minWidth: 44 }}
+                                    />
+                                </Tooltip>
                             </Flex>
                         ),
                     },

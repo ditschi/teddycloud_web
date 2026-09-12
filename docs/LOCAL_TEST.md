@@ -37,5 +37,5 @@ npm run start-http
 ## What to try
 
 - Library → `audio_multi.taf` download icon: header checkbox selects all tracks; one track downloads as `.ogg`, more than one as `.zip`; “Download as one file” stays available.
-- Settings → Web login: create users, enable login, log in; deleting the last user confirms and turns auth off.
+- Settings → Web login: create users, enable login, log in; change a password with the key icon next to the username (no extra section); deleting the last user confirms and turns auth off.
 - Lockout recovery (host/container only): `TEDDYCLOUD_WEB_AUTH_DISABLE=1` and restart, or `frontend.web_auth_enabled=false` in `config.ini` and restart.
