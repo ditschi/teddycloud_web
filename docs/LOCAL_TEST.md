@@ -34,6 +34,8 @@ npm run start-http
 
 `.env.local` proxies `/api` and `/content` to `http://127.0.0.1:8080`.
 
+Screenshots and demo videos stay local (`docs/pr-screenshots/`, gitignored) and are attached on the draft PRs, not committed.
+
 ## What to try
 
 - Library → `audio_multi.taf` download icon: header checkbox selects all tracks; one track downloads as `.ogg`, more than one as `.zip`; “Download as one file” stays available.

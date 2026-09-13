@@ -28,3 +28,6 @@ mkcert.exe
 src/setupProxy.js
 public/img_unknown.png
 public/web/*
+
+# Local PR screenshots/videos — attach in GitHub, do not commit
+docs/pr-screenshots/
