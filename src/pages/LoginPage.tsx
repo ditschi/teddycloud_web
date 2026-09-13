@@ -24,7 +24,11 @@ export const LoginPage = ({ themeSwitch }: { themeSwitch: ReactNode }) => {
         try {
             await login(values.username.trim(), values.password);
         } catch (err) {
-            setError(err instanceof Error ? err.message : t("auth.loginFailed"));
+            if (err instanceof Error && err.message === "rate_limited") {
+                setError(t("auth.loginRateLimited"));
+            } else {
+                setError(err instanceof Error ? err.message : t("auth.loginFailed"));
+            }
         } finally {
             setSubmitting(false);
         }
