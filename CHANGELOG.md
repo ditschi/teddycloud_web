@@ -2,6 +2,8 @@
 
 ## 0.7.1
 
+- gui: Optional web UI login with multiple users (all full UI rights)
+- gui: Rate-limit web login after repeated failures
 - gui: fixed missing images in library [https://github.com/toniebox-reverse-engineering/teddycloud_web/issues/320](https://github.com/toniebox-reverse-engineering/teddycloud_web/issues/320)
 
 ### Commits
