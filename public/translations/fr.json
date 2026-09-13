@@ -12,6 +12,7 @@
     },
     "auth": {
         "loginFailed": "Nom d'utilisateur ou mot de passe invalide",
+        "loginRateLimited": "Trop de tentatives de connexion. Réessaie dans quelques minutes.",
         "loginHint": "Connectez-vous à TeddyCloud",
         "loginSubmit": "Se connecter",
         "loginTitle": "Connexion web",

@@ -12,6 +12,7 @@
     },
     "auth": {
         "loginFailed": "Invalid username or password",
+        "loginRateLimited": "Too many login attempts. Try again in a few minutes.",
         "loginHint": "Sign in to TeddyCloud",
         "loginSubmit": "Log in",
         "loginTitle": "Web login",

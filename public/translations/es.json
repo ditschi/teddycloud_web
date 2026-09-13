@@ -12,6 +12,7 @@
     },
     "auth": {
         "loginFailed": "Usuario o contraseña no válidos",
+        "loginRateLimited": "Demasiados intentos de inicio de sesión. Inténtalo de nuevo en unos minutos.",
         "loginHint": "Inicia sesión en TeddyCloud",
         "loginSubmit": "Iniciar sesión",
         "loginTitle": "Inicio de sesión web",

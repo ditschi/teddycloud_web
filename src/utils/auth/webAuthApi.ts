@@ -79,6 +79,9 @@ export async function login(username: string, password: string): Promise<AuthSta
     });
     const data = await parseJson(response);
     if (!response.ok) {
+        if (response.status === 429 || data.error === "rate_limited") {
+            throw new Error("rate_limited");
+        }
         throw new Error(data.message || "Login failed");
     }
     if (data.token) {
